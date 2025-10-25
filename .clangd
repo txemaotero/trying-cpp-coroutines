@@ -1,0 +1,4 @@
+CompileFlags:
+  Add: [-xc++, -Wall, -Wextra, -std=c++23, -stdlib=libstdc++]
+  Remove: [-W*]
+  Compiler: clang++
