@@ -3,6 +3,14 @@
  * - We start with a single thread io operations processing
  *
  */
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wshorten-64-to-32"
+#pragma clang diagnostic ignored "-Wimplicit-int-conversion"
+#pragma clang diagnostic ignored "-Wsign-conversion"
+#include <coro/coro.hpp>
+#pragma clang diagnostic pop
+
 #include <fcntl.h>
 #include <filesystem>
 #include <print>
@@ -52,19 +60,22 @@ Operation CreateRandomOperation(const std::string& buffer)
     }
 }
 
-size_t countNumbersInFile(const fs::path& path)
+coro::task<size_t> countNumbersInFile(const fs::path& path,
+                                      coro::thread_pool& threadpool)
 {
     if (!fs::exists(path))
     {
-        return 0;
+        co_return 0;
     }
     // Open the file using linux api
 
     const auto fd = open(path.c_str(), O_RDONLY);
     if (fd == -1)
     {
-        return 0;
+        co_return 0;
     }
+
+    co_await threadpool.schedule();
     size_t count = 0;
     char buffer[4096];
     ssize_t bytesRead;
@@ -79,13 +90,13 @@ size_t countNumbersInFile(const fs::path& path)
         }
     }
     close(fd);
-    return count;
+    co_return count;
 }
 
-bool readFileHasValidNumberOfDigits(const fs::path& path)
+coro::task<bool> readFileHasValidNumberOfDigits(const fs::path& path, coro::thread_pool& threadpool)
 {
-    size_t count = countNumbersInFile(path);
-    return count % 10 == 0;
+    size_t count = co_await countNumbersInFile(path, threadpool);
+    co_return count % 10 == 0;
 }
 
 bool writeToFile(const fs::path& path, std::string_view data)
@@ -112,17 +123,18 @@ struct overloaded: Ts...
     using Ts::operator()...;
 };
 
-bool processOperation(const Operation& op)
+coro::task<bool> processOperation(const Operation& op, coro::thread_pool& threadpool)
 {
-    return std::visit(overloaded{[](const ReadOperation& readOp) -> bool
-                                 {
-                                     return readFileHasValidNumberOfDigits(readOp.path);
-                                 },
-                                 [](const WriteOperation& writeOp) -> bool
-                                 {
-                                     return writeToFile(writeOp.path, writeOp.data);
-                                 }},
-                      op);
+    if (std::holds_alternative<ReadOperation>(op))
+    {
+        co_return co_await readFileHasValidNumberOfDigits(std::get<ReadOperation>(op).path,
+                                                          threadpool);
+    }
+    else if (std::holds_alternative<WriteOperation>(op))
+    {
+        co_return writeToFile(std::get<WriteOperation>(op).path, std::get<WriteOperation>(op).data);
+    }
+    co_return false;
 }
 
 class Component
@@ -159,23 +171,36 @@ public:
 
     void runIteration()
     {
-        for (auto it = mOperations.begin(); it != mOperations.end();)
+        std::vector<coro::task<bool>> tasks;
+        for (auto& op: mOperations)
         {
-            bool remove = processOperation(*it);
-            if (remove)
+            tasks.push_back(processOperation(op, *mThreadPool));
+        }
+        auto results = coro::sync_wait(coro::when_all(std::move(tasks)));
+        std::unordered_set<size_t> indicesToRemove;
+        for (size_t i = 0; i < results.size(); ++i)
+        {
+            if (results[i].return_value())
             {
-                it = mOperations.erase(it);
-            }
-            else
-            {
-                ++it;
+                indicesToRemove.insert(i);
             }
         }
+        size_t i = 0;
+        mOperations.erase(std::remove_if(mOperations.begin(),
+                                         mOperations.end(),
+                                         [&indicesToRemove, &i](const Operation&)
+                                         {
+                                             return indicesToRemove.find(i++) !=
+                                                    indicesToRemove.end();
+                                         }),
+                          mOperations.end());
     }
 
 private:
     std::vector<Operation> mOperations;
     const std::string mBuffer = generateRandomString(5 * 1024 * 1024);
+    std::shared_ptr<coro::thread_pool> mThreadPool{
+        coro::thread_pool::make_shared(coro::thread_pool::options{.thread_count = 4})};
 };
 
 int main()
