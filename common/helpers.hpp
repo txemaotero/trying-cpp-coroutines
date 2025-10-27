@@ -7,7 +7,7 @@
 namespace fs = std::filesystem;
 
 constexpr size_t MAX_FILE_INDEX = 100;
-constexpr size_t NUM_OPERATIONS = 50;
+constexpr size_t NUM_OPERATIONS = 200;
 constexpr size_t NUM_ITERATIONS = 10;
 
 struct ReadOperation
@@ -37,6 +37,6 @@ struct overloaded: Ts...
 using Operation = std::variant<ReadOperation, WriteOperation, WriteInChunksOperation>;
 
 std::string generateRandomString(size_t length);
-Operation CreateRandomOperation(const std::string& buffer);
+Operation createRandomOperation(const std::string& buffer);
 
 

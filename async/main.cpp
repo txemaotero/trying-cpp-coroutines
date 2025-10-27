@@ -155,7 +155,7 @@ public:
         mOperations.reserve(NUM_OPERATIONS);
         for (size_t i = 0; i < NUM_OPERATIONS; ++i)
         {
-            mOperations.push_back(CreateRandomOperation(mBuffer));
+            mOperations.push_back(createRandomOperation(mBuffer));
         }
     }
 
@@ -172,7 +172,7 @@ public:
     {
         while (mOperations.size() < NUM_OPERATIONS)
         {
-            mOperations.push_back(CreateRandomOperation(mBuffer));
+            mOperations.push_back(createRandomOperation(mBuffer));
         }
     }
 

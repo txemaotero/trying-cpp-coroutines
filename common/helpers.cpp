@@ -12,10 +12,10 @@ std::string generateRandomString(size_t length)
     return str;
 }
 
-Operation CreateRandomOperation(const std::string& buffer)
+Operation createRandomOperation(const std::string& buffer)
 {
     const auto dice = rand() % 3;
-    const fs::path filePath{"file_" + std::to_string(rand() % MAX_FILE_INDEX) + ".txt"};
+    const fs::path filePath{"file_" + std::to_string(static_cast<size_t>(rand()) % MAX_FILE_INDEX) + ".txt"};
     if (dice == 0)
     {
         return ReadOperation{filePath};
