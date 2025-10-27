@@ -61,7 +61,8 @@ Operation CreateRandomOperation(const std::string& buffer)
 }
 
 coro::task<size_t> countNumbersInFile(const fs::path& path,
-                                      coro::thread_pool& threadpool)
+                                      coro::thread_pool& threadpool,
+                                      coro::io_scheduler& scheduler)
 {
     if (!fs::exists(path))
     {
@@ -89,13 +90,16 @@ coro::task<size_t> countNumbersInFile(const fs::path& path,
             }
         }
     }
+    co_await scheduler.schedule();
     close(fd);
     co_return count;
 }
 
-coro::task<bool> readFileHasValidNumberOfDigits(const fs::path& path, coro::thread_pool& threadpool)
+coro::task<bool> readFileHasValidNumberOfDigits(const fs::path& path,
+                                                coro::thread_pool& threadpool,
+                                                coro::io_scheduler& scheduler)
 {
-    size_t count = co_await countNumbersInFile(path, threadpool);
+    size_t count = co_await countNumbersInFile(path, threadpool, scheduler);
     co_return count % 10 == 0;
 }
 
@@ -123,12 +127,16 @@ struct overloaded: Ts...
     using Ts::operator()...;
 };
 
-coro::task<bool> processOperation(const Operation& op, coro::thread_pool& threadpool)
+coro::task<bool> processOperation(const Operation& op,
+                                  coro::thread_pool& threadpool,
+                                  coro::io_scheduler& scheduler)
 {
+    co_await scheduler.schedule();
     if (std::holds_alternative<ReadOperation>(op))
     {
         co_return co_await readFileHasValidNumberOfDigits(std::get<ReadOperation>(op).path,
-                                                          threadpool);
+                                                          threadpool,
+                                                          scheduler);
     }
     else if (std::holds_alternative<WriteOperation>(op))
     {
@@ -173,7 +181,7 @@ public:
         std::vector<coro::task<bool>> tasks;
         for (auto& op: mOperations)
         {
-            tasks.push_back(processOperation(op, *mThreadPool));
+            tasks.push_back(processOperation(op, *mThreadPool, *scheduler));
         }
         auto results = coro::sync_wait(coro::when_all(std::move(tasks)));
         std::unordered_set<size_t> indicesToRemove;
@@ -200,6 +208,10 @@ private:
     const std::string mBuffer = generateRandomString(5 * 1024 * 1024);
     std::shared_ptr<coro::thread_pool> mThreadPool{
         coro::thread_pool::make_shared(coro::thread_pool::options{.thread_count = 4})};
+    std::shared_ptr<coro::io_scheduler> scheduler{
+        coro::io_scheduler::make_shared(coro::io_scheduler::options{
+            .thread_strategy = coro::io_scheduler::thread_strategy_t::spawn,
+            .execution_strategy = coro::io_scheduler::execution_strategy_t::process_tasks_inline})};
 };
 
 int main()
