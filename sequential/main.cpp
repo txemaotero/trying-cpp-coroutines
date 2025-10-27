@@ -143,7 +143,6 @@ public:
     {
         for (size_t i = 0; i < iterations; ++i)
         {
-            std::println("Iteration {}", i + 1);
             runIteration();
             refillOperationsIfNeeded();
         }
@@ -180,9 +179,9 @@ private:
 
 int main()
 {
-    std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
     Component component{};
-    component.eventLoop(10);
+    std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
+    component.eventLoop(20);
     std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
     std::println("Execution time: {} ms", duration);
