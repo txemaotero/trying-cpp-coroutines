@@ -4,7 +4,6 @@
  *
  */
 #include <fcntl.h>
-#include <filesystem>
 #include <print>
 #include <string>
 #include <string_view>
@@ -12,65 +11,13 @@
 #include <variant>
 #include <vector>
 
-namespace fs = std::filesystem;
+#include "common/helpers.hpp"
 
-std::string generateRandomString(size_t length)
-{
-    std::string str;
-    str.resize(length);
-    for (size_t i = 0; i < length; ++i)
-    {
-        str[i] = 'A' + (rand() % 26);
-    }
-    return str;
-}
-
-struct ReadOperation
-{
-    fs::path path;
-};
-
-struct WriteOperation
-{
-    fs::path path;
-    std::string_view data;
-};
-
-struct WriteInChunksOperation
-{
-    fs::path path;
-    std::string_view data;
-    size_t chunkSize;
-};
-
-using Operation = std::variant<ReadOperation, WriteOperation, WriteInChunksOperation>;
-
-Operation CreateRandomOperation(const std::string& buffer)
-{
-    const auto dice = rand() % 3;
-    const fs::path filePath{"file_" + std::to_string(rand() % 100) + ".txt"};
-    if (dice == 0)
-    {
-        return ReadOperation{filePath};
-    }
-    const size_t start = static_cast<size_t>(rand()) % (buffer.size() - 1024 * 1024);
-    const std::string_view dataView{buffer.data() + start, 1024 * 1024};
-    if (dice == 1)
-    {
-        return WriteOperation{filePath, dataView};
-    }
-    else
-    {
-        const size_t nChunks = static_cast<size_t>(rand()) % 5u + 5u;
-        return WriteInChunksOperation{filePath, dataView, nChunks};
-    }
-}
 
 size_t countNumbersInFile(const fs::path& path)
 {
     if (!fs::exists(path))
     {
-        std::println("countNumbersInFile: file {} does not exist", path.string());
         return 0;
     }
     // Open the file using linux api
@@ -153,12 +100,6 @@ bool writeToFileInChunks(const fs::path& path, std::string_view data, size_t nCh
     return true;
 }
 
-template<class... Ts>
-struct overloaded: Ts...
-{
-    using Ts::operator()...;
-};
-
 bool processOperation(const Operation& op)
 {
     return std::visit(
@@ -180,12 +121,10 @@ bool processOperation(const Operation& op)
 class Component
 {
 public:
-    static constexpr size_t numOperations = 50;
-
     Component()
     {
-        mOperations.reserve(numOperations);
-        for (size_t i = 0; i < numOperations; ++i)
+        mOperations.reserve(NUM_OPERATIONS);
+        for (size_t i = 0; i < NUM_OPERATIONS; ++i)
         {
             mOperations.push_back(CreateRandomOperation(mBuffer));
         }
@@ -195,7 +134,6 @@ public:
     {
         for (size_t i = 0; i < iterations; ++i)
         {
-            std::println("Event loop iteration {}", i + 1);
             runIteration();
             refillOperationsIfNeeded();
         }
@@ -203,7 +141,7 @@ public:
 
     void refillOperationsIfNeeded()
     {
-        while (mOperations.size() < numOperations)
+        while (mOperations.size() < NUM_OPERATIONS)
         {
             mOperations.push_back(CreateRandomOperation(mBuffer));
         }
@@ -234,13 +172,13 @@ int main()
 {
     Component component{};
     std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
-    component.eventLoop(10);
+    component.eventLoop(NUM_ITERATIONS);
     std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-    std::println("Execution time: {} ms", duration);
+    std::println("Sequential - Execution time: {} ms", duration);
 
     // remove files
-    for (int i = 0; i < 100; ++i)
+    for (size_t i = 0; i < MAX_FILE_INDEX; ++i)
     {
         fs::path path = fs::path("file_" + std::to_string(i) + ".txt");
         if (fs::exists(path))

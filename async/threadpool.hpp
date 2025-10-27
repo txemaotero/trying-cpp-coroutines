@@ -3,7 +3,6 @@
 #include <condition_variable>
 #include <cstddef>
 #include <functional>
-#include <future>
 #include <mutex>
 #include <queue>
 #include <thread>

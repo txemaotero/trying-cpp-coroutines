@@ -1,4 +1,3 @@
-PROJECT := trying_coroutines
 BUILD   := build
 
 .PHONY: all build run clean
@@ -7,10 +6,12 @@ all: build
 
 build:
 	@cmake -S . -B $(BUILD)
-	@cmake --build $(BUILD) -j
+	@cmake --build $(BUILD) -j12
 
 run: build
-	@./$(BUILD)/$(PROJECT)
+	@./$(BUILD)/sequential
+	@./$(BUILD)/coro
+	@./$(BUILD)/async
 
 clean:
 	@rm -rf $(BUILD)

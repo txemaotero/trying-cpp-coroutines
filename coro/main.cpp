@@ -20,45 +20,8 @@
 #include <variant>
 #include <vector>
 
-namespace fs = std::filesystem;
+#include "common/helpers.hpp"
 
-std::string generateRandomString(size_t length)
-{
-    std::string str;
-    str.resize(length);
-    for (size_t i = 0; i < length; ++i)
-    {
-        str[i] = 'A' + (rand() % 26);
-    }
-    return str;
-}
-
-struct ReadOperation
-{
-    fs::path path;
-};
-
-struct WriteOperation
-{
-    fs::path path;
-    std::string_view data;
-};
-
-using Operation = std::variant<ReadOperation, WriteOperation>;
-
-Operation CreateRandomOperation(const std::string& buffer)
-{
-    if (rand() % 2 == 0)
-    {
-        return ReadOperation{fs::path("file_" + std::to_string(rand() % 100) + ".txt")};
-    }
-    else
-    {
-        size_t start = static_cast<size_t>(rand()) % (buffer.size() - 1024 * 1024);
-        return WriteOperation{fs::path("file_" + std::to_string(rand() % 100) + ".txt"),
-                              std::string_view(buffer.data() + start, 1024)};
-    }
-}
 
 coro::task<size_t> countNumbersInFile(const fs::path& path,
                                       coro::thread_pool& threadpool,
@@ -99,21 +62,35 @@ coro::task<bool> readFileHasValidNumberOfDigits(const fs::path& path,
                                                 coro::thread_pool& threadpool,
                                                 coro::io_scheduler& scheduler)
 {
+    co_await scheduler.schedule();
     size_t count = co_await countNumbersInFile(path, threadpool, scheduler);
     co_return count % 10 == 0;
 }
 
-bool writeToFile(const fs::path& path, std::string_view data)
+bool writeToFile(const fs::path& path,
+                 std::string_view data,
+                 std::optional<off_t> offset = std::nullopt)
 {
     // Open the file using linux api
-    const auto fd = open(path.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+    const auto fd = open(path.c_str(), O_WRONLY | O_CREAT | (offset ? 0 : O_APPEND), 0644);
     if (fd == -1)
     {
+        std::println("write: open failed");
         return false;
+    }
+    if (offset)
+    {
+        if (::lseek(fd, *offset, SEEK_SET) == (off_t)-1)
+        {
+            ::close(fd);
+            std::println("write: lseek failed");
+            return false;
+        }
     }
     ssize_t bytesWritten = write(fd, data.data(), data.size());
     if (bytesWritten == -1)
     {
+        std::println("write: write failed");
         close(fd);
         return false;
     }
@@ -121,39 +98,51 @@ bool writeToFile(const fs::path& path, std::string_view data)
     return bytesWritten == static_cast<ssize_t>(data.size());
 }
 
-template<class... Ts>
-struct overloaded: Ts...
+bool writeToFileInChunks(const fs::path& path, std::string_view data, size_t nChunks)
 {
-    using Ts::operator()...;
-};
+    size_t totalSize = data.size();
+    size_t offset = 0;
+    size_t chunkSize = totalSize / nChunks;
+    while (offset < totalSize)
+    {
+        size_t currentChunkSize = std::min(chunkSize, totalSize - offset);
+        if (!writeToFile(path, data.substr(offset, currentChunkSize), offset))
+        {
+            std::println("writeToFileInChunks: writeToFile failed at offset {}", offset);
+            return false;
+        }
+        offset += currentChunkSize;
+    }
+    return true;
+}
 
 coro::task<bool> processOperation(const Operation& op,
                                   coro::thread_pool& threadpool,
                                   coro::io_scheduler& scheduler)
 {
-    co_await scheduler.schedule();
-    if (std::holds_alternative<ReadOperation>(op))
-    {
-        co_return co_await readFileHasValidNumberOfDigits(std::get<ReadOperation>(op).path,
-                                                          threadpool,
-                                                          scheduler);
-    }
-    else if (std::holds_alternative<WriteOperation>(op))
-    {
-        co_return writeToFile(std::get<WriteOperation>(op).path, std::get<WriteOperation>(op).data);
-    }
-    co_return false;
+    co_return co_await std::visit(
+        overloaded{[&threadpool, &scheduler](const ReadOperation& readOp) -> coro::task<bool>
+                   {
+                       co_return co_await readFileHasValidNumberOfDigits(readOp.path, threadpool, scheduler);
+                   },
+                   [](const WriteOperation& writeOp) -> coro::task<bool>
+                   {
+                       co_return writeToFile(writeOp.path, writeOp.data);
+                   },
+                   [](const WriteInChunksOperation& writeOp) -> coro::task<bool>
+                   {
+                       co_return writeToFileInChunks(writeOp.path, writeOp.data, writeOp.chunkSize);
+                   }},
+        op);
 }
 
 class Component
 {
 public:
-    static constexpr size_t numOperations = 1000;
-
     Component()
     {
-        mOperations.reserve(numOperations);
-        for (size_t i = 0; i < numOperations; ++i)
+        mOperations.reserve(NUM_OPERATIONS);
+        for (size_t i = 0; i < NUM_OPERATIONS; ++i)
         {
             mOperations.push_back(CreateRandomOperation(mBuffer));
         }
@@ -170,7 +159,7 @@ public:
 
     void refillOperationsIfNeeded()
     {
-        while (mOperations.size() < numOperations)
+        while (mOperations.size() < NUM_OPERATIONS)
         {
             mOperations.push_back(CreateRandomOperation(mBuffer));
         }
@@ -218,13 +207,13 @@ int main()
 {
     Component component{};
     std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
-    component.eventLoop(20);
+    component.eventLoop(NUM_ITERATIONS);
     std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-    std::println("Execution time: {} ms", duration);
+    std::println("Coro - Execution time: {} ms", duration);
 
     // remove files
-    for (int i = 0; i < 100; ++i)
+    for (size_t i = 0; i < MAX_FILE_INDEX; ++i)
     {
         fs::path path = fs::path("file_" + std::to_string(i) + ".txt");
         if (fs::exists(path))
