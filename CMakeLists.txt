@@ -4,12 +4,8 @@ cmake_minimum_required(VERSION 3.24)
 # Toolchain: clang++ + libc++
 # (Only honored on a *fresh* build dir)
 # -------------------------------
-if(NOT DEFINED CMAKE_C_COMPILER)
-  set(CMAKE_C_COMPILER clang)
-endif()
-if(NOT DEFINED CMAKE_CXX_COMPILER)
-  set(CMAKE_CXX_COMPILER clang++)
-endif()
+set(CMAKE_C_COMPILER clang)
+set(CMAKE_CXX_COMPILER clang++)
 
 project(trying_coroutines LANGUAGES CXX)
 
@@ -31,14 +27,9 @@ endif()
 # -------------------------------
 # libc++ flags for Clang
 # -------------------------------
-if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-  add_compile_options(-stdlib=libstdc++)
-  add_link_options(-stdlib=libstdc++)
-  # Linux needs explicit c++abi and pthread
-  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    add_link_options(-lc++abi -pthread)
-  endif()
-endif()
+add_compile_options(-stdlib=libstdc++)
+add_link_options(-stdlib=libstdc++)
+add_link_options(-lc++abi -pthread)
 
 # -------------------------------
 # Dependencies (FetchContent): libcoro v0.15.0
@@ -57,22 +48,16 @@ FetchContent_MakeAvailable(libcoro)
 find_package(Threads REQUIRED)
 
 # -------------------------------
-# Your target
+# Targets
 # -------------------------------
-add_executable(trying_coroutines
-  src/main.cpp
-)
+add_executable(sequential ./sequential/main.cpp)
+target_compile_options(sequential PRIVATE -Wall -Wextra -Wpedantic -Wconversion)
+target_link_libraries(sequential PRIVATE Threads::Threads)
 
-# Warnings (tweak as you like)
-if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-  target_compile_options(trying_coroutines PRIVATE -Wall -Wextra -Wpedantic -Wconversion)
-endif()
+add_executable(async ./async/main.cpp)
+target_compile_options(sequential PRIVATE -Wall -Wextra -Wpedantic -Wconversion)
+target_link_libraries(sequential PRIVATE Threads::Threads)
 
-# Link deps
-# The libcoro project defines a target named "libcoro".
-target_link_libraries(trying_coroutines
-  PRIVATE
-    libcoro
-    Threads::Threads
-)
-
+add_executable(coro ./coro/main.cpp)
+target_compile_options(coro PRIVATE -Wall -Wextra -Wpedantic -Wconversion)
+target_link_libraries(coro PRIVATE libcoro Threads::Threads)
