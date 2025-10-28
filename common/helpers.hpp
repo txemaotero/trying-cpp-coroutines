@@ -9,6 +9,7 @@ namespace fs = std::filesystem;
 constexpr size_t MAX_FILE_INDEX = 100;
 constexpr size_t NUM_OPERATIONS = 200;
 constexpr size_t NUM_ITERATIONS = 10;
+constexpr size_t NUM_THREADS = 4;
 
 struct ReadOperation
 {

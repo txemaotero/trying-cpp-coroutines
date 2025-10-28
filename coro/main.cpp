@@ -196,7 +196,7 @@ private:
     std::vector<Operation> mOperations;
     const std::string mBuffer = generateRandomString(5 * 1024 * 1024);
     std::shared_ptr<coro::thread_pool> mThreadPool{
-        coro::thread_pool::make_shared(coro::thread_pool::options{.thread_count = 4})};
+        coro::thread_pool::make_shared(coro::thread_pool::options{.thread_count = NUM_THREADS})};
     std::shared_ptr<coro::io_scheduler> scheduler{
         coro::io_scheduler::make_shared(coro::io_scheduler::options{
             .thread_strategy = coro::io_scheduler::thread_strategy_t::spawn,

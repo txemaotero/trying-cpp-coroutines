@@ -218,7 +218,7 @@ private:
     std::vector<Operation> mOperations;
     const std::string mBuffer = generateRandomString(5 * 1024 * 1024);
 
-    ThreadPool mThreadPool{4};
+    ThreadPool mThreadPool{NUM_THREADS};
 };
 
 int main()
