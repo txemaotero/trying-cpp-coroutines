@@ -1,8 +1,18 @@
 #include "helpers.hpp"
+#include <cstdlib>
 
+void initializeRandom()
+{
+    [[maybe_unused]] static const bool seedSet = []()
+    {
+        srand(RANDOM_SEED);
+        return true;
+    }();
+}
 
 std::string generateRandomString(size_t length)
 {
+    initializeRandom();
     std::string str;
     str.resize(length);
     for (size_t i = 0; i < length; ++i)
@@ -14,6 +24,7 @@ std::string generateRandomString(size_t length)
 
 Operation createRandomOperation(const std::string& buffer)
 {
+    initializeRandom();
     const auto dice = rand() % 3;
     const fs::path filePath{"file_" + std::to_string(static_cast<size_t>(rand()) % MAX_FILE_INDEX) + ".txt"};
     if (dice == 0)

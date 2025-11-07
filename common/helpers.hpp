@@ -10,6 +10,7 @@ constexpr size_t MAX_FILE_INDEX = 100;
 constexpr size_t NUM_OPERATIONS = 200;
 constexpr size_t NUM_ITERATIONS = 10;
 constexpr size_t NUM_THREADS = 4;
+constexpr unsigned int RANDOM_SEED = 42;
 
 struct ReadOperation
 {
@@ -37,6 +38,7 @@ struct overloaded: Ts...
 
 using Operation = std::variant<ReadOperation, WriteOperation, WriteInChunksOperation>;
 
+void initializeRandom();
 std::string generateRandomString(size_t length);
 Operation createRandomOperation(const std::string& buffer);
 
